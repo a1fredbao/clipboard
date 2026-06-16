@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json.schemastore.org/wrangler",
+  "name": "clipboard",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-06-16",
+  "compatibility_flags": ["nodejs_compat"],
+
+  /*
+   * KV Namespace binding for the clipboard store.
+   *
+   * Before deploying:
+   *   1. Create a namespace:  wrangler kv namespace create CLIPBOARD_KV
+   *   2. Copy the returned `id` here.
+   *   3. For a preview namespace (used by `wrangler dev`):
+   *        wrangler kv namespace create CLIPBOARD_KV --preview
+   *      Copy the returned `id` into `preview_id`.
+   */
+  "kv_namespaces": [
+    {
+      "binding": "CLIPBOARD_KV",
+      "id": "REPLACE_WITH_YOUR_KV_NAMESPACE_ID",
+      "preview_id": "REPLACE_WITH_YOUR_PREVIEW_KV_NAMESPACE_ID"
+    }
+  ],
+
+  /*
+   * Serve the Vite-built React SPA.
+   * `single-page-application` lets React Router handle client-side routing
+   * (404s are rewritten to index.html instead of being returned to the user).
+   */
+  "assets": {
+    "directory": "./dist/client",
+    "not_found_handling": "single-page-application"
+  }
+}
