@@ -73,6 +73,9 @@ const IDLE: Status = { kind: "idle", text: "" };
 // Component
 // ---------------------------------------------------------------------------
 
+const isMac = navigator.platform?.toLowerCase().includes("mac") ||
+  navigator.userAgent.toLowerCase().includes("mac");
+
 export default function App() {
   const [key, setKey]         = useState("");
   const [content, setContent] = useState("");
@@ -80,6 +83,17 @@ export default function App() {
   const [isDirty, setIsDirty] = useState(false);
   const [theme, setTheme]     = useState<Theme>(getInitialTheme);
   const timerRef              = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const autoSaveIntervalRef   = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Stable refs so event listeners always see the latest values
+  const keyRef     = useRef(key);
+  const contentRef = useRef(content);
+  const isDirtyRef = useRef(isDirty);
+  const statusRef  = useRef(status);
+  useEffect(() => { keyRef.current = key; }, [key]);
+  useEffect(() => { contentRef.current = content; }, [content]);
+  useEffect(() => { isDirtyRef.current = isDirty; }, [isDirty]);
+  useEffect(() => { statusRef.current = status; }, [status]);
 
   // Apply theme on mount and whenever it changes
   useEffect(() => { applyTheme(theme); }, [theme]);
@@ -93,6 +107,23 @@ export default function App() {
     if (s.kind !== "loading" && s.kind !== "saving")
       timerRef.current = setTimeout(() => setStatus(IDLE), ms);
   }, []);
+
+  // Core save function — uses refs so it's safe to call from any context
+  const doSave = useCallback(async () => {
+    if (statusRef.current.kind === "saving") return;
+    if (!isDirtyRef.current) return;
+    const k = keyRef.current;
+    const v = contentRef.current;
+    if (!k) return;
+    setStatus({ kind: "saving", text: "Saving…" });
+    try {
+      await saveContent(k, v);
+      setIsDirty(false);
+      flash({ kind: "saved", text: "Saved" });
+    } catch (err: unknown) {
+      flash({ kind: "error", text: err instanceof Error ? err.message : "Save failed" });
+    }
+  }, [flash]);
 
   // On mount: resolve key → load content
   useEffect(() => {
@@ -115,18 +146,39 @@ export default function App() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Auto-save: every 60 seconds
+  useEffect(() => {
+    autoSaveIntervalRef.current = setInterval(() => {
+      doSave();
+    }, 60_000);
+    return () => {
+      if (autoSaveIntervalRef.current) clearInterval(autoSaveIntervalRef.current);
+    };
+  }, [doSave]);
+
+  // Auto-save: on page blur (tab switch / alt-tab) and visibility hidden (close tab)
+  useEffect(() => {
+    const onBlur = () => doSave();
+    const onVisibility = () => { if (document.visibilityState === "hidden") doSave(); };
+    window.addEventListener("blur", onBlur);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("blur", onBlur);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [doSave]);
+
   // ⌘/Ctrl+S shortcut
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "s") {
         e.preventDefault();
-        handleSave();
+        doSave();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key, content]);
+  }, [doSave]);
 
   // Warn on unload with unsaved changes
   useEffect(() => {
@@ -134,18 +186,6 @@ export default function App() {
     window.addEventListener("beforeunload", onUnload);
     return () => window.removeEventListener("beforeunload", onUnload);
   }, [isDirty]);
-
-  const handleSave = async () => {
-    if (status.kind === "saving") return;
-    setStatus({ kind: "saving", text: "Saving…" });
-    try {
-      await saveContent(key, content);
-      setIsDirty(false);
-      flash({ kind: "saved", text: "Saved" });
-    } catch (err: unknown) {
-      flash({ kind: "error", text: err instanceof Error ? err.message : "Save failed" });
-    }
-  };
 
   const handleCopyLink = async () => {
     try {
@@ -156,7 +196,22 @@ export default function App() {
     }
   };
 
-  const isBusy = status.kind === "loading" || status.kind === "saving";
+  // Banner text: status takes priority, then hint
+  const shortcutLabel = isMac ? "⌘S" : "Ctrl+S";
+  const bannerText = (() => {
+    if (status.kind === "loading") return status.text;
+    if (status.kind === "saving")  return "Saving…";
+    if (status.kind === "saved")   return "✓ Saved";
+    if (status.kind === "copied")  return "✓ Link copied";
+    if (status.kind === "error")   return status.text;
+    if (isDirty) return `Unsaved changes · press ${shortcutLabel} to save`;
+    return `Auto-saves on blur & every minute · ${shortcutLabel} to save now`;
+  })();
+
+  const bannerKind = (() => {
+    if (status.kind !== "idle") return status.kind;
+    return isDirty ? "dirty" : "hint";
+  })();
 
   return (
     <main className="app">
@@ -207,29 +262,12 @@ export default function App() {
         />
       </section>
 
-      {/* Footer */}
-      <footer className="footer">
-        <span className={`status-msg status--${status.kind}`} aria-live="polite">
-          {isDirty && status.kind === "idle" ? "Unsaved changes" : status.text}
-        </span>
-
-        <div className="footer-right">
-          <span className="kbd-hint">
-            {navigator.platform?.toLowerCase().includes("mac") ? "⌘S" : "Ctrl+S"}
-          </span>
-          <button
-            id="save-btn"
-            className="btn btn--primary"
-            onClick={handleSave}
-            disabled={isBusy}
-            aria-label="Save"
-          >
-            {status.kind === "saving"
-              ? <><span className="spinner" /> Saving…</>
-              : "Save"}
-          </button>
-        </div>
-      </footer>
+      {/* Banner */}
+      <div className={`banner banner--${bannerKind}`} aria-live="polite">
+        {status.kind === "saving"
+          ? <><span className="spinner spinner--banner" /> {bannerText}</>
+          : bannerText}
+      </div>
     </main>
   );
 }
