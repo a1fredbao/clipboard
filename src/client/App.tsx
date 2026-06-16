@@ -2,10 +2,28 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import "./index.css";
 
 // ---------------------------------------------------------------------------
+// Theme
+// ---------------------------------------------------------------------------
+
+type Theme = "dark" | "light";
+
+function getInitialTheme(): Theme {
+  const stored = localStorage.getItem("theme");
+  if (stored === "dark" || stored === "light") return stored;
+  return window.matchMedia("(prefers-color-scheme: dark)").matches
+    ? "dark"
+    : "light";
+}
+
+function applyTheme(theme: Theme) {
+  document.documentElement.setAttribute("data-theme", theme);
+  localStorage.setItem("theme", theme);
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Generate a short random key using the Web Crypto API for better uniqueness. */
 function generateKey(): string {
   const bytes = new Uint8Array(4);
   crypto.getRandomValues(bytes);
@@ -14,30 +32,19 @@ function generateKey(): string {
     .slice(0, 8);
 }
 
-/** Derive the clipboard key from the current URL path (strips leading slash). */
 function getKeyFromPath(): string | null {
   const path = window.location.pathname.replace(/^\//, "").trim();
   return path || null;
 }
 
-/** Copy text to the clipboard and return whether it succeeded. */
-async function copyToClipboard(text: string): Promise<boolean> {
-  try {
-    await navigator.clipboard.writeText(text);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 // ---------------------------------------------------------------------------
-// API helpers
+// API
 // ---------------------------------------------------------------------------
 
 async function fetchContent(key: string): Promise<string | null> {
   const res = await fetch(`/api/${encodeURIComponent(key)}`);
   if (res.status === 404) return null;
-  if (!res.ok) throw new Error(`Server error: ${res.status}`);
+  if (!res.ok) throw new Error(`Server error ${res.status}`);
   const data = (await res.json()) as { value: string | null };
   return data.value;
 }
@@ -50,21 +57,16 @@ async function saveContent(key: string, value: string): Promise<void> {
   });
   if (!res.ok) {
     const data = (await res.json().catch(() => ({}))) as { error?: string };
-    throw new Error(data.error ?? `Server error: ${res.status}`);
+    throw new Error(data.error ?? `Server error ${res.status}`);
   }
 }
 
 // ---------------------------------------------------------------------------
-// Status message type
+// Status
 // ---------------------------------------------------------------------------
 
 type StatusKind = "idle" | "loading" | "saving" | "saved" | "copied" | "error";
-
-interface Status {
-  kind: StatusKind;
-  text: string;
-}
-
+interface Status { kind: StatusKind; text: string }
 const IDLE: Status = { kind: "idle", text: "" };
 
 // ---------------------------------------------------------------------------
@@ -72,23 +74,27 @@ const IDLE: Status = { kind: "idle", text: "" };
 // ---------------------------------------------------------------------------
 
 export default function App() {
-  const [key, setKey] = useState<string>("");
-  const [content, setContent] = useState<string>("");
-  const [status, setStatus] = useState<Status>(IDLE);
+  const [key, setKey]         = useState("");
+  const [content, setContent] = useState("");
+  const [status, setStatus]   = useState<Status>(IDLE);
   const [isDirty, setIsDirty] = useState(false);
+  const [theme, setTheme]     = useState<Theme>(getInitialTheme);
+  const timerRef              = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Used to auto-clear transient status messages after a delay.
-  const statusTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Apply theme on mount and whenever it changes
+  useEffect(() => { applyTheme(theme); }, [theme]);
 
-  const flashStatus = useCallback((s: Status, ms = 3000) => {
-    if (statusTimer.current) clearTimeout(statusTimer.current);
+  const toggleTheme = () =>
+    setTheme((t) => (t === "dark" ? "light" : "dark"));
+
+  const flash = useCallback((s: Status, ms = 3000) => {
+    if (timerRef.current) clearTimeout(timerRef.current);
     setStatus(s);
-    if (s.kind !== "loading" && s.kind !== "saving") {
-      statusTimer.current = setTimeout(() => setStatus(IDLE), ms);
-    }
+    if (s.kind !== "loading" && s.kind !== "saving")
+      timerRef.current = setTimeout(() => setStatus(IDLE), ms);
   }, []);
 
-  // On mount: set key from URL (or generate one), then load content.
+  // On mount: resolve key → load content
   useEffect(() => {
     let k = getKeyFromPath();
     if (!k) {
@@ -97,35 +103,37 @@ export default function App() {
     }
     setKey(k);
 
-    // Fetch existing content for this key.
     setStatus({ kind: "loading", text: "Loading…" });
     fetchContent(k)
       .then((value) => {
-        if (value !== null) {
-          setContent(value);
-          setIsDirty(false);
-        }
+        if (value !== null) { setContent(value); setIsDirty(false); }
         setStatus(IDLE);
       })
-      .catch((err: unknown) => {
-        const msg = err instanceof Error ? err.message : "Failed to load";
-        flashStatus({ kind: "error", text: msg });
-      });
+      .catch((err: unknown) =>
+        flash({ kind: "error", text: err instanceof Error ? err.message : "Load failed" })
+      );
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Ctrl/Cmd+S shortcut to save.
+  // ⌘/Ctrl+S shortcut
   useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === "s") {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "s") {
         e.preventDefault();
         handleSave();
       }
     };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, content]);
+
+  // Warn on unload with unsaved changes
+  useEffect(() => {
+    const onUnload = (e: BeforeUnloadEvent) => { if (isDirty) e.preventDefault(); };
+    window.addEventListener("beforeunload", onUnload);
+    return () => window.removeEventListener("beforeunload", onUnload);
+  }, [isDirty]);
 
   const handleSave = async () => {
     if (status.kind === "saving") return;
@@ -133,116 +141,92 @@ export default function App() {
     try {
       await saveContent(key, content);
       setIsDirty(false);
-      flashStatus({ kind: "saved", text: "Saved!" });
+      flash({ kind: "saved", text: "Saved" });
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Save failed";
-      flashStatus({ kind: "error", text: msg });
+      flash({ kind: "error", text: err instanceof Error ? err.message : "Save failed" });
     }
   };
 
   const handleCopyLink = async () => {
-    const ok = await copyToClipboard(window.location.href);
-    flashStatus(
-      ok
-        ? { kind: "copied", text: "Link copied!" }
-        : { kind: "error", text: "Copy failed" }
-    );
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      flash({ kind: "copied", text: "Copied" }, 2000);
+    } catch {
+      flash({ kind: "error", text: "Copy failed" });
+    }
   };
-
-  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setContent(e.target.value);
-    setIsDirty(true);
-  };
-
-  // Warn user before closing tab with unsaved changes.
-  useEffect(() => {
-    const handler = (e: BeforeUnloadEvent) => {
-      if (isDirty) e.preventDefault();
-    };
-    window.addEventListener("beforeunload", handler);
-    return () => window.removeEventListener("beforeunload", handler);
-  }, [isDirty]);
 
   const isBusy = status.kind === "loading" || status.kind === "saving";
 
   return (
     <main className="app">
-      {/* ------------------------------------------------------------------ */}
-      {/* Header                                                              */}
-      {/* ------------------------------------------------------------------ */}
+      {/* Header */}
       <header className="header">
-        <h1 className="logo">
-          <span className="logo-icon">📋</span>
-          <span>Clipboard</span>
-        </h1>
+        <h1 className="logo">Clipboard</h1>
 
-        <div className="header-right">
+        <div className="header-center">
           <div className="key-badge">
-            <span className="key-label">Key</span>
+            <span className="key-label">key</span>
             <code className="key-value">{key}</code>
           </div>
+        </div>
+
+        <nav className="header-actions">
           <button
             id="copy-link-btn"
-            className={`copy-btn ${status.kind === "copied" ? "copy-btn--done" : ""}`}
-            title="Copy shareable link"
+            className={`btn btn--ghost${status.kind === "copied" ? " btn--ok" : ""}`}
             onClick={handleCopyLink}
+            title="Copy shareable link"
           >
-            {status.kind === "copied" ? "✓ Copied" : "Copy Link"}
+            {status.kind === "copied" ? "✓ Copied" : "Copy link"}
           </button>
-        </div>
+
+          <button
+            id="theme-toggle-btn"
+            className="btn btn--icon"
+            onClick={toggleTheme}
+            title={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
+            aria-label="Toggle colour scheme"
+          >
+            {theme === "dark" ? "☀︎" : "◗"}
+          </button>
+        </nav>
       </header>
 
-      {/* ------------------------------------------------------------------ */}
-      {/* Editor                                                              */}
-      {/* ------------------------------------------------------------------ */}
+      {/* Editor */}
       <section className="editor-section">
         <textarea
           id="clipboard-editor"
           className="editor"
-          placeholder="Paste or type anything here…&#10;&#10;Share this page's URL to let others view and edit this clipboard."
+          placeholder={"Paste or type anything here…\n\nShare this page's URL to let others view and edit."}
           value={content}
-          onChange={handleChange}
-          spellCheck={false}
+          onChange={(e) => { setContent(e.target.value); setIsDirty(true); }}
           disabled={status.kind === "loading"}
-          aria-label="Clipboard content editor"
+          spellCheck={false}
+          aria-label="Clipboard content"
         />
       </section>
 
-      {/* ------------------------------------------------------------------ */}
-      {/* Footer                                                              */}
-      {/* ------------------------------------------------------------------ */}
+      {/* Footer */}
       <footer className="footer">
-        <div className="footer-left">
-          {isDirty && status.kind === "idle" && (
-            <span className="unsaved-dot" title="Unsaved changes" />
-          )}
-          <span
-            className={`status-msg status-msg--${status.kind}`}
-            aria-live="polite"
-          >
-            {status.text}
-          </span>
-        </div>
+        <span className={`status-msg status--${status.kind}`} aria-live="polite">
+          {isDirty && status.kind === "idle" ? "Unsaved changes" : status.text}
+        </span>
 
         <div className="footer-right">
-          <span className="hint">
-            {navigator.platform?.toLowerCase().includes("mac") ? "⌘" : "Ctrl"}+S
-            to save
+          <span className="kbd-hint">
+            {navigator.platform?.toLowerCase().includes("mac") ? "⌘S" : "Ctrl+S"}
           </span>
           <button
             id="save-btn"
-            className={`save-btn ${isBusy ? "save-btn--busy" : ""}`}
+            className="btn btn--primary"
             onClick={handleSave}
             disabled={isBusy}
-            aria-label="Save clipboard content"
+            aria-label="Save"
           >
-            {status.kind === "saving" ? (
-              <>
-                <span className="spinner" /> Saving…
-              </>
-            ) : (
-              "Save"
-            )}
+            {status.kind === "saving"
+              ? <><span className="spinner" /> Saving…</>
+              : "Save"}
           </button>
         </div>
       </footer>
