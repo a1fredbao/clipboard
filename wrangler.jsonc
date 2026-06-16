@@ -3,8 +3,9 @@
   "name": "clipboard",
   "main": "src/index.ts",
   "compatibility_date": "2025-06-16",
-  "compatibility_flags": ["nodejs_compat"],
-
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
   /*
    * KV Namespace binding for the clipboard store.
    *
@@ -18,11 +19,10 @@
   "kv_namespaces": [
     {
       "binding": "CLIPBOARD_KV",
-      "id": "REPLACE_WITH_YOUR_KV_NAMESPACE_ID",
-      "preview_id": "REPLACE_WITH_YOUR_PREVIEW_KV_NAMESPACE_ID"
+      "id": "a6f0355c414343d5895c72b9a9a800a4",
+      "preview_id": "0e673bb4a6704bbb899882426521185f"
     }
   ],
-
   /*
    * Serve the Vite-built React SPA.
    * `single-page-application` lets React Router handle client-side routing
