@@ -125,6 +125,18 @@ export default function App() {
     }
   }, [flash]);
 
+  // Fire-and-forget save using fetch keepalive:true — safe to call during page unload.
+  // The browser will complete the request even after the page is torn down.
+  const saveBeacon = useCallback(() => {
+    if (!isDirtyRef.current || !keyRef.current) return;
+    fetch(`/api/${encodeURIComponent(keyRef.current)}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ value: contentRef.current }),
+      keepalive: true,
+    });
+  }, []);
+
   // On mount: resolve key → load content
   useEffect(() => {
     let k = getKeyFromPath();
@@ -180,12 +192,12 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, [doSave]);
 
-  // Warn on unload with unsaved changes
+  // Save on tab close / navigate away — no popup, no warning dialog.
+  // pagehide fires reliably on tab close, back/forward navigation, and page refresh.
   useEffect(() => {
-    const onUnload = (e: BeforeUnloadEvent) => { if (isDirty) e.preventDefault(); };
-    window.addEventListener("beforeunload", onUnload);
-    return () => window.removeEventListener("beforeunload", onUnload);
-  }, [isDirty]);
+    window.addEventListener("pagehide", saveBeacon);
+    return () => window.removeEventListener("pagehide", saveBeacon);
+  }, [saveBeacon]);
 
   const handleCopyLink = async () => {
     try {
