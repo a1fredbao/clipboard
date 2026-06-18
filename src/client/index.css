@@ -88,12 +88,6 @@ body {
   white-space: nowrap;
 }
 
-.header-center {
-  flex: 1;
-  display: flex;
-  justify-content: center;
-}
-
 .key-badge {
   display: inline-flex;
   align-items: center;
@@ -120,7 +114,7 @@ body {
 .header-actions {
   display: flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: 1rem;
 }
 
 /* ============================================================
@@ -311,9 +305,5 @@ body {
   .app {
     padding: 0.65rem;
     gap: 0.6rem;
-  }
-
-  .header-center {
-    display: none;
   }
 }

@@ -214,7 +214,6 @@ export default function App() {
     if (status.kind === "loading") return status.text;
     if (status.kind === "saving")  return "Saving…";
     if (status.kind === "saved")   return "✓ Saved";
-    if (status.kind === "copied")  return "✓ Link copied";
     if (status.kind === "error")   return status.text;
     if (isDirty) return `Unsaved changes · press ${shortcutLabel} to save`;
     return `Auto-saves on blur & every minute · ${shortcutLabel} to save now`;
@@ -231,14 +230,17 @@ export default function App() {
       <header className="header">
         <h1 className="logo">Clipboard</h1>
 
-        <div className="header-center">
+        <nav className="header-actions">
           <div className="key-badge">
             <span className="key-label">key</span>
             <code className="key-value">{key}</code>
           </div>
-        </div>
 
-        <nav className="header-actions">
+          <div className={`banner banner--${bannerKind}`} aria-live="polite">
+            {status.kind === "saving"
+              ? <><span className="spinner spinner--banner" /> {bannerText}</>
+              : bannerText}
+          </div>
           <button
             id="copy-link-btn"
             className={`btn btn--ghost${status.kind === "copied" ? " btn--ok" : ""}`}
@@ -275,10 +277,9 @@ export default function App() {
       </section>
 
       {/* Banner */}
-      <div className={`banner banner--${bannerKind}`} aria-live="polite">
-        {status.kind === "saving"
-          ? <><span className="spinner spinner--banner" /> {bannerText}</>
-          : bannerText}
+      <div className="banner">
+        <a href="https://github.com/a1fredbao/clipboard">A simple clipboard app</a> based on Cloudflare Workers.  
+        Made with ❤️ by Alfred Bao.
       </div>
     </main>
   );
