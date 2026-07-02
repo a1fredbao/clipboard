@@ -76,6 +76,10 @@ const IDLE: Status = { kind: "idle", text: "" };
 const isMac = navigator.platform?.toLowerCase().includes("mac") ||
   navigator.userAgent.toLowerCase().includes("mac");
 
+const isMobile = /Android|iPhone|iPad|iPod|webOS|BlackBerry|IEMobile|Opera Mini/i.test(
+  navigator.userAgent
+) || ("ontouchstart" in window && window.innerWidth <= 768);
+
 export default function App() {
   const [key, setKey]         = useState("");
   const [content, setContent] = useState("");
@@ -236,11 +240,35 @@ export default function App() {
             <code className="key-value">{key}</code>
           </div>
 
-          <div className={`banner banner--${bannerKind}`} aria-live="polite">
-            {status.kind === "saving"
-              ? <><span className="spinner spinner--banner" /> {bannerText}</>
-              : bannerText}
-          </div>
+          {isMobile ? (
+            <button
+              id="save-btn"
+              className={`btn btn--ghost btn--save${
+                status.kind === "saved" ? " btn--ok" : ""
+              }${isDirty ? " btn--save-dirty" : ""}`}
+              onClick={doSave}
+              disabled={status.kind === "saving" || status.kind === "loading"}
+              title="Save now"
+            >
+              {status.kind === "saving" ? (
+                <><span className="spinner spinner--banner" /> Saving…</>
+              ) : status.kind === "saved" ? (
+                "✓ Saved"
+              ) : status.kind === "error" ? (
+                "Save failed"
+              ) : isDirty ? (
+                "Save"
+              ) : (
+                "Saved"
+              )}
+            </button>
+          ) : (
+            <div className={`banner banner--${bannerKind}`} aria-live="polite">
+              {status.kind === "saving"
+                ? <><span className="spinner spinner--banner" /> {bannerText}</>
+                : bannerText}
+            </div>
+          )}
           <button
             id="copy-link-btn"
             className={`btn btn--ghost${status.kind === "copied" ? " btn--ok" : ""}`}

@@ -299,11 +299,36 @@ body {
 }
 
 /* ============================================================
+   Save button (mobile)
+   ============================================================ */
+.btn--save {
+  min-width: 4.5rem;
+  justify-content: center;
+}
+
+.btn--save-dirty {
+  border-color: var(--text);
+  color: var(--text);
+}
+
+.btn--save.btn--ok {
+  border-color: var(--border);
+}
+
+/* ============================================================
    Responsive
    ============================================================ */
 @media (max-width: 480px) {
   .app {
     padding: 0.65rem;
     gap: 0.6rem;
+  }
+
+  .header {
+    flex-wrap: wrap;
+  }
+
+  .header-actions {
+    gap: 0.5rem;
   }
 }
