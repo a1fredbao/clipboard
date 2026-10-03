@@ -42,7 +42,7 @@ const KEY_RE = /^[a-z0-9_-]{1,128}$/i;
 // App
 // ---------------------------------------------------------------------------
 
-const app = new Hono<{ Bindings: Bindings }>();
+const app = new Hono<{ Bindings: Bindings; }>();
 
 // Allow cross-origin requests so the React dev server can talk to the worker
 // during local development (the Cloudflare Vite plugin proxies requests, so
@@ -107,9 +107,13 @@ app.put("/api/:key", async (c) => {
     });
   }
 
-  await c.env.CLIPBOARD_KV.put(key, body.value, {
-    expirationTtl: TTL_SECONDS,
-  });
+  if (!body.value.length) {
+    await c.env.CLIPBOARD_KV.delete(key);
+  } else {
+    await c.env.CLIPBOARD_KV.put(key, body.value, {
+      expirationTtl: TTL_SECONDS,
+    });
+  }
 
   return c.json<ApiResponse>({ key, value: body.value });
 });
