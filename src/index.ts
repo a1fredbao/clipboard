@@ -42,7 +42,7 @@ const KEY_RE = /^[a-z0-9_-]{1,128}$/i;
 // App
 // ---------------------------------------------------------------------------
 
-const app = new Hono<{ Bindings: Bindings; }>();
+const app = new Hono<{ Bindings: Bindings }>();
 
 // Allow cross-origin requests so the React dev server can talk to the worker
 // during local development (the Cloudflare Vite plugin proxies requests, so
