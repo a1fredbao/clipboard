@@ -107,9 +107,13 @@ app.put("/api/:key", async (c) => {
     });
   }
 
-  await c.env.CLIPBOARD_KV.put(key, body.value, {
-    expirationTtl: TTL_SECONDS,
-  });
+  if (!body.value.length) {
+    await c.env.CLIPBOARD_KV.delete(key);
+  } else {
+    await c.env.CLIPBOARD_KV.put(key, body.value, {
+      expirationTtl: TTL_SECONDS,
+    });
+  }
 
   return c.json<ApiResponse>({ key, value: body.value });
 });
