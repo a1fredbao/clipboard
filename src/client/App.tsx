@@ -66,7 +66,8 @@ async function saveContent(key: string, value: string): Promise<void> {
 // ---------------------------------------------------------------------------
 
 type StatusKind = "idle" | "loading" | "saving" | "saved" | "copied" | "error";
-interface Status { kind: StatusKind; text: string }
+type CopyTarget = "link" | "content";
+interface Status { kind: StatusKind; text: string; copyTarget?: CopyTarget }
 const IDLE: Status = { kind: "idle", text: "" };
 
 // ---------------------------------------------------------------------------
@@ -206,7 +207,17 @@ export default function App() {
   const handleCopyLink = async () => {
     try {
       await navigator.clipboard.writeText(window.location.href);
-      flash({ kind: "copied", text: "Copied" }, 2000);
+      flash({ kind: "copied", text: "Copied link", copyTarget: "link" }, 2000);
+    } catch {
+      flash({ kind: "error", text: "Copy failed" });
+    }
+  };
+
+  const handleCopyAll = async () => {
+    if (!contentRef.current) return;
+    try {
+      await navigator.clipboard.writeText(contentRef.current);
+      flash({ kind: "copied", text: "Copied all", copyTarget: "content" }, 2000);
     } catch {
       flash({ kind: "error", text: "Copy failed" });
     }
@@ -218,6 +229,7 @@ export default function App() {
     if (status.kind === "loading") return status.text;
     if (status.kind === "saving")  return "Saving…";
     if (status.kind === "saved")   return "✓ Saved";
+    if (status.kind === "copied")  return `✓ ${status.text}`;
     if (status.kind === "error")   return status.text;
     if (isDirty) return `Unsaved changes · press ${shortcutLabel} to save`;
     return `Auto-saves on blur & every minute · ${shortcutLabel} to save now`;
@@ -270,12 +282,29 @@ export default function App() {
             </div>
           )}
           <button
+            id="copy-all-btn"
+            className={`btn btn--ghost${
+              status.kind === "copied" && status.copyTarget === "content" ? " btn--ok" : ""
+            }`}
+            onClick={handleCopyAll}
+            disabled={status.kind === "loading" || !content}
+            title="Copy all clipboard content"
+          >
+            {status.kind === "copied" && status.copyTarget === "content"
+              ? "✓ Copied"
+              : "Copy all"}
+          </button>
+          <button
             id="copy-link-btn"
-            className={`btn btn--ghost${status.kind === "copied" ? " btn--ok" : ""}`}
+            className={`btn btn--ghost${
+              status.kind === "copied" && status.copyTarget === "link" ? " btn--ok" : ""
+            }`}
             onClick={handleCopyLink}
             title="Copy shareable link"
           >
-            {status.kind === "copied" ? "✓ Copied" : "Copy link"}
+            {status.kind === "copied" && status.copyTarget === "link"
+              ? "✓ Copied"
+              : "Copy link"}
           </button>
 
           <button
